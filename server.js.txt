@@ -1,0 +1,534 @@
+const express = require("express");
+const http = require("http");
+const WebSocket = require("ws");
+const path = require("path");
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static(path.join(__dirname, "public")));
+
+const rooms = new Map();
+
+const questions = [
+    {
+        q: "Wie hieß VALORANT während der Entwicklungsphase?",
+        a: ["Project V", "Project A", "Project Valor", "Riot FPS"],
+        correct: 1
+    },
+    {
+        q: "Welche Map hat drei Spike-Sites?",
+        a: ["Haven", "Lotus", "Pearl", "Ascent"],
+        correct: 0
+    },
+    {
+        q: "Wer wurde zuerst veröffentlicht: Skye oder Killjoy?",
+        a: ["Skye", "Killjoy", "Beide gleichzeitig", "Gekko"],
+        correct: 1
+    },
+    {
+        q: "Wie viele Kugeln hat ein Vandal-Magazin?",
+        a: ["20", "25", "30", "35"],
+        correct: 1
+    },
+    {
+        q: "Welcher Agent besitzt Paranoia?",
+        a: ["Omen", "Fade", "Harbor", "Breach"],
+        correct: 0
+    },
+    {
+        q: "Welche Waffe kostet 4700 Credits?",
+        a: ["Outlaw", "Operator", "Odin", "Ares"],
+        correct: 1
+    },
+    {
+        q: "Welche Agentin ist eine Sentinel?",
+        a: ["Sage", "Skye", "Fade", "Neon"],
+        correct: 0
+    },
+    {
+        q: "Welche Map spielt in Marokko?",
+        a: ["Bind", "Breeze", "Sunset", "Haven"],
+        correct: 0
+    },
+    {
+        q: "Wie lange dauert eine vollständige Spike-Entschärfung?",
+        a: ["6 Sekunden", "7 Sekunden", "7,5 Sekunden", "8 Sekunden"],
+        correct: 2
+    },
+    {
+        q: "Welcher Agent besitzt Hunter's Fury?",
+        a: ["KAY/O", "Sova", "Breach", "Gekko"],
+        correct: 1
+    },
+    {
+        q: "Welche Agentin stammt aus Ghana?",
+        a: ["Astra", "Fade", "Neon", "Sage"],
+        correct: 0
+    },
+    {
+        q: "Wann erschien VALORANT offiziell?",
+        a: ["2. Juni 2020", "1. Mai 2020", "10. Juni 2020", "15. Juli 2020"],
+        correct: 0
+    },
+    {
+        q: "Welche Map wurde zusammen mit Gekko veröffentlicht?",
+        a: ["Lotus", "Abyss", "Sunset", "Pearl"],
+        correct: 0
+    },
+    {
+        q: "Wie heißt Cyphers Kamera-Fähigkeit?",
+        a: ["Spycam", "Trapwire", "Cyber Cage", "Neural Theft"],
+        correct: 0
+    },
+    {
+        q: "Welche Agenten können sich teleportieren?",
+        a: ["Omen und Yoru", "Jett und Omen", "Sova und Yoru", "Cypher und Omen"],
+        correct: 0
+    },
+    {
+        q: "Welcher Agent kommt aus Frankreich?",
+        a: ["Chamber", "Breach", "Harbor", "KAY/O"],
+        correct: 0
+    },
+    {
+        q: "Welche Agentin stammt von den Philippinen?",
+        a: ["Neon", "Reyna", "Sage", "Clove"],
+        correct: 0
+    },
+    {
+        q: "Welche Agentin kann Gegner mit einer Fähigkeit tödlich treffen?",
+        a: ["Sage", "Viper", "Killjoy", "Reyna"],
+        correct: 1
+    },
+    {
+        q: "Auf welcher Map gibt es ein großes Aquarium?",
+        a: ["Pearl", "Icebox", "Breeze", "Fracture"],
+        correct: 0
+    },
+    {
+        q: "Wie heißt die Welt, auf der VALORANT spielt?",
+        a: ["Omega Earth", "Alpha Earth", "Runeterra", "Elysium"],
+        correct: 1
+    },
+    {
+        q: "Was bedeutet NT?",
+        a: ["Nice Try", "No Time", "New Team", "Next Tournament"],
+        correct: 0
+    },
+    {
+        q: "Welche Fähigkeit gehört zu Fade?",
+        a: ["Prowler", "Paranoia", "Haunt", "Leer"],
+        correct: 0
+    },
+    {
+        q: "Welche Ultimate gehört zu Raze?",
+        a: ["Showstopper", "Empress", "Lockdown", "Dimensional Drift"],
+        correct: 0
+    },
+    {
+        q: "Welcher Agent besitzt Run It Back?",
+        a: ["Jett", "Phoenix", "Reyna", "Neon"],
+        correct: 1
+    },
+    {
+        q: "Welche Map besitzt die Seilbahn-Mechanik?",
+        a: ["Bind", "Fracture", "Lotus", "Split"],
+        correct: 1
+    },
+    {
+        q: "Welcher Agent ist für Spycam bekannt?",
+        a: ["Cypher", "Killjoy", "Chamber", "Sova"],
+        correct: 0
+    },
+    {
+        q: "Wie viele Spieler hat ein Standard-Team?",
+        a: ["4", "5", "6", "7"],
+        correct: 1
+    },
+    {
+        q: "Wie viele Runden braucht man normalerweise zum Sieg?",
+        a: ["10", "11", "12", "13"],
+        correct: 3
+    },
+    {
+        q: "Was passiert mit dem Spike, wenn der Träger stirbt?",
+        a: ["Er verschwindet", "Er fällt auf den Boden", "Er teleportiert", "Er wird automatisch gelegt"],
+        correct: 1
+    },
+    {
+        q: "TROLL: Was ist die wichtigste Radiant-Fähigkeit?",
+        a: ["Aim", "Game Sense", "Crosshair", "NT schreiben"],
+        correct: 3
+    },
+    {
+        q: "TROLL: Noxin99 verliert ein 1v1. Was war schuld?",
+        a: ["Ping", "Maus", "Teammates", "Natürlich der Gegner"],
+        correct: 3
+    },
+    {
+        q: "MEME: Was bedeutet GG?",
+        a: ["Good Game", "Get Good", "Great Gun", "Game Gone"],
+        correct: 0
+    },
+    {
+        q: "Welcher Agent ist ein Initiator?",
+        a: ["Sova", "Jett", "Killjoy", "Sage"],
+        correct: 0
+    },
+    {
+        q: "Welche Waffe ist ein Scharfschützengewehr?",
+        a: ["Operator", "Guardian", "Bulldog", "Vandal"],
+        correct: 0
+    },
+    {
+        q: "Welche Agentin besitzt Resurrection?",
+        a: ["Sage", "Skye", "Killjoy", "Reyna"],
+        correct: 0
+    },
+    {
+        q: "Welche Rolle hat Killjoy?",
+        a: ["Sentinel", "Duelist", "Controller", "Initiator"],
+        correct: 0
+    },
+    {
+        q: "Welche Waffe hat 25 Schuss und ist ein Gewehr?",
+        a: ["Vandal", "Phantom", "Guardian", "Bulldog"],
+        correct: 0
+    },
+    {
+        q: "TROLL: Wer hat im Quiz immer Recht?",
+        a: ["Der Host", "Der Chat", "Noxin99", "Derjenige mit mehr Kills"],
+        correct: 2
+    },
+    {
+        q: "FINALE: Wer ist der stärkste Agent?",
+        a: ["Jett", "Reyna", "Chamber", "Der Agent des Spielers"],
+        correct: 3
+    }
+];
+
+function generateCode() {
+    return Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
+}
+
+function send(ws, data) {
+    if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(data));
+    }
+}
+
+function broadcast(room, data) {
+    room.players.forEach(player => {
+        send(player.ws, data);
+    });
+}
+
+function leaderboard(room) {
+    return [...room.players.values()]
+        .sort((a, b) => b.score - a.score)
+        .map((p, index) => ({
+            position: index + 1,
+            name: p.name,
+            score: p.score
+        }));
+}
+
+function sendLeaderboard(room) {
+    broadcast(room, {
+        type: "leaderboard",
+        leaderboard: leaderboard(room)
+    });
+}
+
+function startQuestion(room) {
+
+    if (room.questionIndex >= questions.length) {
+        room.state = "finished";
+
+        broadcast(room, {
+            type: "finished",
+            leaderboard: leaderboard(room)
+        });
+
+        return;
+    }
+
+    room.state = "question";
+    room.answers.clear();
+
+    const question = questions[room.questionIndex];
+
+    room.questionStarted = Date.now();
+
+    broadcast(room, {
+        type: "question",
+        index: room.questionIndex,
+        total: questions.length,
+        question: question.q,
+        answers: question.a,
+        time: 20
+    });
+
+    clearTimeout(room.timer);
+
+    room.timer = setTimeout(() => {
+        endQuestion(room);
+    }, 20000);
+}
+
+function endQuestion(room) {
+
+    if (room.state !== "question") {
+        return;
+    }
+
+    clearTimeout(room.timer);
+
+    const question = questions[room.questionIndex];
+
+    room.answers.forEach((answer, playerId) => {
+
+        const player = room.players.get(playerId);
+
+        if (!player) return;
+
+        if (answer.choice === question.correct) {
+
+            const elapsed =
+                Date.now() - answer.time;
+
+            const remaining =
+                Math.max(
+                    0,
+                    20000 - elapsed
+                );
+
+            const speedBonus =
+                Math.round(
+                    remaining / 20
+                );
+
+            player.score +=
+                1000 + speedBonus;
+
+        }
+
+    });
+
+    room.state = "result";
+
+    broadcast(room, {
+        type: "result",
+        correct: question.correct,
+        leaderboard: leaderboard(room)
+    });
+}
+
+wss.on("connection", ws => {
+
+    ws.on("message", raw => {
+
+        let data;
+
+        try {
+            data = JSON.parse(raw);
+        } catch {
+            return;
+        }
+
+        if (data.type === "create") {
+
+            let code = generateCode();
+
+            while (rooms.has(code)) {
+                code = generateCode();
+            }
+
+            const room = {
+                host: ws,
+                players: new Map(),
+                answers: new Map(),
+                questionIndex: 0,
+                state: "lobby",
+                timer: null,
+                questionStarted: null
+            };
+
+            rooms.set(code, room);
+
+            ws.roomCode = code;
+            ws.isHost = true;
+
+            send(ws, {
+                type: "roomCreated",
+                code
+            });
+
+            sendLeaderboard(room);
+
+            return;
+        }
+
+        if (data.type === "join") {
+
+            const room =
+                rooms.get(
+                    String(data.code || "")
+                        .toUpperCase()
+                );
+
+            if (!room) {
+                send(ws, {
+                    type: "error",
+                    message: "Lobby nicht gefunden."
+                });
+
+                return;
+            }
+
+            if (room.state !== "lobby") {
+                send(ws, {
+                    type: "error",
+                    message: "Das Quiz läuft bereits."
+                });
+
+                return;
+            }
+
+            const id =
+                Math.random()
+                    .toString(36)
+                    .substring(2, 10);
+
+            const player = {
+                id,
+                name:
+                    String(data.name || "Spieler")
+                        .substring(0, 20),
+                score: 0,
+                ws
+            };
+
+            room.players.set(id, player);
+
+            ws.roomCode =
+                String(data.code)
+                    .toUpperCase();
+
+            ws.playerId = id;
+            ws.isHost = false;
+
+            send(ws, {
+                type: "joined",
+                name: player.name
+            });
+
+            sendLeaderboard(room);
+
+            return;
+        }
+
+        if (data.type === "start") {
+
+            const room =
+                rooms.get(ws.roomCode);
+
+            if (!room || !ws.isHost) return;
+
+            startQuestion(room);
+
+            return;
+        }
+
+        if (data.type === "answer") {
+
+            const room =
+                rooms.get(ws.roomCode);
+
+            if (!room || ws.isHost) return;
+
+            if (room.state !== "question") return;
+
+            if (room.answers.has(ws.playerId)) return;
+
+            room.answers.set(
+                ws.playerId,
+                {
+                    choice: Number(data.choice),
+                    time: Date.now()
+                }
+            );
+
+            send(ws, {
+                type: "answerSaved"
+            });
+
+            if (
+                room.answers.size >=
+                room.players.size
+            ) {
+                endQuestion(room);
+            }
+
+            return;
+        }
+
+        if (data.type === "next") {
+
+            const room =
+                rooms.get(ws.roomCode);
+
+            if (!room || !ws.isHost) return;
+
+            room.questionIndex++;
+
+            startQuestion(room);
+
+            return;
+        }
+
+    });
+
+    ws.on("close", () => {
+
+        const room =
+            rooms.get(ws.roomCode);
+
+        if (!room) return;
+
+        if (ws.isHost) {
+
+            clearTimeout(room.timer);
+
+            broadcast(room, {
+                type: "error",
+                message: "Der Host hat das Spiel beendet."
+            });
+
+            rooms.delete(ws.roomCode);
+
+            return;
+        }
+
+        room.players.delete(ws.playerId);
+
+        sendLeaderboard(room);
+
+    });
+
+});
+
+server.listen(PORT, () => {
+
+    console.log(
+        `Noxin99 Quiz läuft auf Port ${PORT}`
+    );
+
+});
