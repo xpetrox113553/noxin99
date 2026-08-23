@@ -225,6 +225,9 @@ function send(ws, data) {
 }
 
 function broadcast(room, data) {
+    
+    send(room.host, data);
+
     room.players.forEach(player => {
         send(player.ws, data);
     });
