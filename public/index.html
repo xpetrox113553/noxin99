@@ -634,7 +634,9 @@ function finished(list) {
 ========================= */
 
 socket.onmessage = function(event) {
-
+    
+console.log("WS:", event.data);
+    
     const data =
         JSON.parse(event.data);
 
